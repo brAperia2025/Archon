@@ -24,6 +24,8 @@ const mockSyncWorkspace = mock(() =>
   Promise.resolve({
     branch: 'main',
     synced: true,
+    mode: 'fast-forward',
+    state: 'in_sync',
     previousHead: 'abc12345',
     newHead: 'abc12345',
     updated: false,
@@ -890,6 +892,7 @@ function makeCodebaseForSync() {
     name: 'test-repo',
     repository_url: 'https://github.com/test/repo',
     default_cwd: '/repos/test-repo',
+    default_branch: null,
     ai_assistant_type: 'claude',
     commands: {},
     created_at: new Date(),
@@ -984,16 +987,13 @@ describe('discoverAllWorkflows — remote sync', () => {
     const platform = makePlatform();
     await handleMessage(platform, 'conv-1', 'What is the latest commit?');
 
-    // /repos/test-repo is NOT under ~/.archon/workspaces/ so resetAfterFetch=false
-    expect(mockSyncWorkspace).toHaveBeenCalledWith('/repos/test-repo', undefined, {
-      resetAfterFetch: false,
-    });
+    expect(mockSyncWorkspace).toHaveBeenCalledWith('/repos/test-repo', undefined);
     // Regression guard: orchestrator must resolve cwd through the ensure variant
     // so the workspaces dir is created before the AI provider spawn (issue #1528).
     expect(mockEnsureArchonWorkspacesPath).toHaveBeenCalled();
   });
 
-  test('passes resetAfterFetch=true for managed clones', async () => {
+  test('does not pass reset mode for managed clones during chat sync', async () => {
     const conversation = makeConversation({ codebase_id: 'codebase-1' });
     const codebase = {
       ...makeCodebaseForSync(),
@@ -1007,9 +1007,20 @@ describe('discoverAllWorkflows — remote sync', () => {
 
     expect(mockSyncWorkspace).toHaveBeenCalledWith(
       '/home/test/.archon/workspaces/owner/repo/source',
-      undefined,
-      { resetAfterFetch: true }
+      undefined
     );
+  });
+
+  test('passes stored default_branch when present', async () => {
+    const conversation = makeConversation({ codebase_id: 'codebase-1' });
+    const codebase = { ...makeCodebaseForSync(), default_branch: 'develop' };
+    mockGetOrCreateConversation.mockReturnValueOnce(Promise.resolve(conversation));
+    mockGetCodebase.mockReturnValueOnce(Promise.resolve(codebase));
+
+    const platform = makePlatform();
+    await handleMessage(platform, 'conv-1', 'What is the latest commit?');
+
+    expect(mockSyncWorkspace).toHaveBeenCalledWith('/repos/test-repo', 'develop');
   });
 
   test('proceeds without throwing when syncWorkspace rejects', async () => {
@@ -1024,9 +1035,7 @@ describe('discoverAllWorkflows — remote sync', () => {
     await expect(
       handleMessage(platform, 'conv-1', 'What is the latest commit?')
     ).resolves.toBeUndefined();
-    expect(mockSyncWorkspace).toHaveBeenCalledWith('/repos/test-repo', undefined, {
-      resetAfterFetch: false,
-    });
+    expect(mockSyncWorkspace).toHaveBeenCalledWith('/repos/test-repo', undefined);
   });
 
   test('does not call syncWorkspace when conversation has no codebase_id', async () => {
@@ -2052,6 +2061,7 @@ describe('handleMessage — multi-chunk command accumulation (regression)', () =
     expect(mockCreateCodebase).toHaveBeenCalledWith({
       name: 'ExampleProject',
       default_cwd: '/.archon/workspaces/owner/repo/source',
+      default_branch: null,
       ai_assistant_type: 'claude',
     });
     const allCalls = (platform.sendMessage as ReturnType<typeof mock>).mock.calls as [
@@ -2083,6 +2093,7 @@ describe('handleMessage — multi-chunk command accumulation (regression)', () =
     expect(mockCreateCodebase).toHaveBeenCalledWith({
       name: 'ExampleProject',
       default_cwd: '/.archon/workspaces/owner/repo/source',
+      default_branch: null,
       ai_assistant_type: 'claude',
     });
     const allCalls = (platform.sendMessage as ReturnType<typeof mock>).mock.calls as [
@@ -2202,6 +2213,7 @@ describe('handleMessage — multi-chunk command accumulation (regression)', () =
     expect(mockCreateCodebase).toHaveBeenCalledWith({
       name: 'MyApp',
       default_cwd: '/path/to/app',
+      default_branch: null,
       ai_assistant_type: 'claude',
     });
   });
