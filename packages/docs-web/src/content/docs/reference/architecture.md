@@ -53,12 +53,13 @@ Archon is a **platform-agnostic AI coding assistant orchestrator** that connects
       └───────────────┼───────────────────┘
                       ▼
 ┌─────────────────────────────────────────────┐
-│    SQLite (default) / PostgreSQL (10 Tables) │
+│    SQLite (default) / PostgreSQL (16 Tables) │
 │  • Codebases  • Conversations  • Sessions   │
 │  • Isolation Envs • Workflow Runs            │
 │  • Workflow Events • Messages                │
 │  • Codebase Env Vars                         │
-│  • Users  • User Identities                  │
+│  • Users • User Identities • Node Sessions   │
+│  • GitHub Tokens • Web Auth Tables           │
 └─────────────────────────────────────────────┘
 ```
 
@@ -1035,7 +1036,7 @@ export function formatToolCall(toolName: string, toolInput?: Record<string, unkn
 
 ## Database Schema
 
-Archon uses a 10-table schema with `remote_agent_` prefix. SQLite is the default (zero setup); PostgreSQL is optional for cloud/advanced deployments.
+Archon uses a 16-table schema with `remote_agent_` prefix. SQLite is the default (zero setup); PostgreSQL is optional for cloud/advanced deployments.
 
 ### Schema Overview
 
@@ -1045,6 +1046,7 @@ remote_agent_codebases
 ├── name (VARCHAR)
 ├── repository_url (VARCHAR)
 ├── default_cwd (VARCHAR)
+├── default_branch (VARCHAR, nullable) -- detected branch used as sync context when available
 ├── ai_assistant_type (VARCHAR) -- registered provider identifier (e.g. 'claude', 'codex')
 └── commands (JSONB) -- {command_name: {path, description}}
 
