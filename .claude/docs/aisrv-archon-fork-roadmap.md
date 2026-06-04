@@ -14,6 +14,16 @@ This fork should make the system itself own the invariants we currently enforce 
 - first-class honest blocked/live-blocked outcomes
 - safe recovery without silently mutating another process's active run
 
+## Current status
+
+Status as of 2026-06-04:
+
+- AISRV fork branch `feat/aisrv-own-archon-state-model` is merged with current upstream `dev` at `f5cda7ab`.
+- The owned fork remote `brAperia2025/Archon` contains the merged branch.
+- The local operator wrapper `/home/aisrvadmin/.local/bin/archon` is pinned to the AISRV fork binary `/home/aisrvadmin/.local/share/archon-forks/archon-f5cda7ab-linux-x64`.
+- `archon --version` reports `Archon CLI v0.4.1-aisrv.f5cda7ab`.
+- `coleam00/Archon` remains an upstream source remote for fetching future `dev` changes; it is not the active local executable.
+
 ## Why fork instead of wrappers only
 
 `archon-ops` wrappers can reduce operator mistakes, but they cannot fix the core state model:
@@ -181,9 +191,9 @@ The first slice should be narrow and high value:
 
 That slice alone should eliminate most of the source/worktree chaos we observed.
 
-## Immediate local next steps
+## Remaining local next steps
 
-1. inspect workflow-run schemas and DB storage for the cleanest place to add PRD identity + lease references
-2. inspect CLI workflow run/resume code paths and trace how they reach `executeWorkflow()`
-3. design the smallest migration needed for lease storage
-4. implement Phase 1 behind a coding-system-specific path rather than refactoring everything at once
+1. Use the active AISRV fork for subsequent PRD workflows instead of the upstream/global package.
+2. When future upstream `dev` changes are needed, fetch from `coleam00/Archon` and merge them into `brAperia2025/Archon:feat/aisrv-own-archon-state-model` before rebuilding/repinning the local binary.
+3. Keep PRD reruns behind the existing router/approval flow; do not relaunch a PRD run without explicit `--prd-id`, source branch, and run/resume provenance.
+4. Continue using honest blocked/live-blocked terminal states when live credentials, human validation, or substrate evidence are missing.
