@@ -839,7 +839,11 @@ export async function workflowRunCommand(
         canonicalRepoPath,
         workingPath: workingCwd,
         sourceBranch: options.sourceBranch ?? storedPrdIdentity?.sourceBranch ?? options.fromBranch,
-        executionBranch: options.branchName ?? storedPrdIdentity?.executionBranch,
+        // For fresh isolated launches, the isolation provider may normalize/prefix the
+        // requested --branch (for example `feat/x` -> `archon/task-feat-x`). Let PRD
+        // provenance derive the execution branch from the actual working tree. For
+        // exact resume, keep the stored branch as the fail-closed expectation.
+        executionBranch: storedPrdIdentity?.executionBranch,
       })
     : null;
   const prdCodebaseId = prdContext ? codebase?.id : undefined;

@@ -105,12 +105,22 @@ mock.module('@archon/git', () => ({
   execFileAsync: mock((_cmd: string, args: string[], options?: { cwd?: string }) => {
     if (args[0] === 'branch' && args[1] === '--show-current') {
       const cwd = options?.cwd;
-      const branch = cwd === '/tmp/test-worktree' ? 'feat/prd-0045-r2' : 'main';
+      const branch =
+        cwd === '/tmp/test-worktree'
+          ? 'feat/prd-0045-r2'
+          : cwd === '/tmp/isolated-prd-worktree'
+            ? 'archon/task-feat-prd-0045-governed-browser-tool-mvp-r2'
+            : 'main';
       return Promise.resolve({ stdout: `${branch}\n`, stderr: '' });
     }
     if (args[0] === 'rev-parse' && args[1] === 'HEAD') {
       const cwd = options?.cwd;
-      const sha = cwd === '/tmp/test-worktree' ? 'abc123' : 'def456';
+      const sha =
+        cwd === '/tmp/test-worktree'
+          ? 'abc123'
+          : cwd === '/tmp/isolated-prd-worktree'
+            ? 'feedface'
+            : 'def456';
       return Promise.resolve({ stdout: `${sha}\n`, stderr: '' });
     }
     return Promise.resolve({ stdout: '', stderr: '' });
@@ -1108,6 +1118,84 @@ describe('workflowRunCommand', () => {
         prd_id: 'PRD-0045',
         workflow_run_id: 'run-1',
         execution_branch: 'feat/prd-0045-r2',
+      })
+    );
+  });
+
+  it('records the actual isolated branch for fresh PRD launches', async () => {
+    const { discoverWorkflowsWithConfig } = await import('@archon/workflows/workflow-discovery');
+    const { executeWorkflow } = await import('@archon/workflows/executor');
+    const conversationDb = await import('@archon/core/db/conversations');
+    const codebaseDb = await import('@archon/core/db/codebases');
+    const leaseDb = await import('@archon/core/db/prd-execution-leases');
+    const isolation = await import('@archon/isolation');
+
+    (discoverWorkflowsWithConfig as ReturnType<typeof mock>).mockResolvedValueOnce({
+      workflows: [makeTestWorkflowWithSource({ name: 'implement' })],
+      errors: [],
+    });
+    (conversationDb.getOrCreateConversation as ReturnType<typeof mock>).mockResolvedValueOnce({
+      id: 'conv-123',
+      ai_assistant_type: 'claude',
+    });
+    (codebaseDb.findCodebaseByDefaultCwd as ReturnType<typeof mock>).mockResolvedValueOnce({
+      id: 'cb-1',
+      name: 'owner/repo',
+      default_cwd: '/test/path',
+    });
+
+    const actualBranch = 'archon/task-feat-prd-0045-governed-browser-tool-mvp-r2';
+    const provider = {
+      create: mock(() =>
+        Promise.resolve({
+          provider: 'worktree',
+          id: '/tmp/isolated-prd-worktree',
+          workingPath: '/tmp/isolated-prd-worktree',
+          branchName: actualBranch,
+          status: 'active',
+          createdAt: new Date(),
+          metadata: { adopted: false },
+        })
+      ),
+      healthCheck: mock(() => Promise.resolve(true)),
+    };
+    (isolation.getIsolationProvider as ReturnType<typeof mock>).mockReturnValueOnce(provider);
+
+    (executeWorkflow as ReturnType<typeof mock>).mockImplementationOnce(
+      async (...args: unknown[]) => {
+        const options = args[7] as {
+          onWorkflowRunCreated?: (run: { id: string }) => Promise<void>;
+        };
+        await options.onWorkflowRunCreated?.({ id: 'run-fresh' });
+        return { success: true, workflowRunId: 'run-fresh' };
+      }
+    );
+
+    await workflowRunCommand('/test/path', 'implement', 'go', {
+      prdId: 'PRD-0045',
+      sourceBranch: 'archon/task-archon-task-feat-prd-0045-governed-browser-tool-mv',
+      branchName: 'feat/prd-0045-governed-browser-tool-mvp-r2',
+    });
+
+    const executeCall = (executeWorkflow as ReturnType<typeof mock>).mock.calls.at(-1);
+    const executeOptions = executeCall?.[7] as {
+      runMetadata?: {
+        execution_identity?: { executionBranch?: string };
+        provenance?: { currentBranch?: string; requestedExecutionBranch?: string };
+      };
+    };
+
+    expect(provider.create).toHaveBeenCalledWith(
+      expect.objectContaining({ identifier: 'feat/prd-0045-governed-browser-tool-mvp-r2' })
+    );
+    expect(executeOptions.runMetadata?.execution_identity?.executionBranch).toBe(actualBranch);
+    expect(executeOptions.runMetadata?.provenance?.currentBranch).toBe(actualBranch);
+    expect(executeOptions.runMetadata?.provenance?.requestedExecutionBranch).toBeUndefined();
+    expect(leaseDb.acquirePrdExecutionLease).toHaveBeenCalledWith(
+      expect.objectContaining({
+        prd_id: 'PRD-0045',
+        workflow_run_id: 'run-fresh',
+        execution_branch: actualBranch,
       })
     );
   });
